@@ -1,135 +1,75 @@
-import requests, time, threading
+import os, time, threading, requests
 from flask import Flask
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime
 
-TOKEN = "9018724396:AAE10-Y5LQgVxlVfiuuqxQDEuqKFuoJIVS8"
-CHAT_ID = "6459511609"
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 app = Flask(__name__)
-@app.route('/')
+@app.route("/")
 def home():
-    return "Pocket Real Bot V2"
+    return "Bot is alive!", 200
 
-def keep_alive():
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
-
-def send_msg(text):
+def send(msg):
     try:
-        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": text})
-    except: pass
+        requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+        json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "HTML"}, timeout=10)
+    except Exception as e:
+        print(f"Send error: {e}", flush=True)
 
-beirut = pytz.timezone("Asia/Beirut")
-
-PAIRS = {
-    "EUR/USD": "EURUSD=X",
-    "GBP/USD": "GBPUSD=X",
-    "USD/JPY": "USDJPY=X",
-    "AUD/USD": "AUDUSD=X",
-    "USD/CAD": "USDCAD=X",
-}
-
-def get_closes(symbol):
+def get_price(symbol):
+    # Yahoo Finance - مجاني
+    mapping = {"EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/JPY": "USDJPY=X", "XAU/USD": "GC=F"}
     try:
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1m"
-        headers = {"User-Agent": "Mozilla/5.0"}
-        r = requests.get(url, headers=headers, timeout=10)
-        data = r.json()
-        result = data['chart']['result'][0]
-        closes = [c for c in result['indicators']['quote'][0]['close'] if c is not None]
+        r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{mapping[symbol]}?range=1d&interval=1m", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        closes = r.json()["chart"]["result"][0]["indicators"]["quote"][0]["close"]
+        closes = [c for c in closes if c is not None]
         return closes
-    except:
+    except Exception as e:
+        print(f"Price error {symbol}: {e}", flush=True)
         return None
 
-def calc_rsi_correct(prices, period=14):
-    # طريقة RSI الصحيحة - Wilder
-    if len(prices) < period+1: return 50
-    deltas = [prices[i]-prices[i-1] for i in range(1, len(prices))]
-    gains = [d if d>0 else 0 for d in deltas]
-    losses = [-d if d<0 else 0 for d in deltas]
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-    for i in range(period, len(deltas)):
-        avg_gain = (avg_gain*(period-1) + gains[i]) / period
-        avg_loss = (avg_loss*(period-1) + losses[i]) / period
+def calc_rsi(closes, period=14):
+    if len(closes) < period+1: return 50
+    gains, losses = [], []
+    for i in range(1, period+1):
+        diff = closes[-i] - closes[-i-1]
+        gains.append(max(diff, 0))
+        losses.append(max(-diff, 0))
+    avg_gain = sum(gains)/period
+    avg_loss = sum(losses)/period
     if avg_loss == 0: return 100
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-def calc_ema(prices, period):
-    if len(prices) < period: return prices[-1]
-    k = 2 / (period + 1)
-    ema = prices[0]
-    for p in prices:
-        ema = p * k + ema * (1 - k)
-    return ema
-
-def format_time(dt):
-    h = dt.strftime("%I:%M:%S").lstrip("0")
-    ampm = "صباحاً" if dt.hour < 12 else "مساءً"
-    return f"{h} {ampm}"
-
-def analyze():
-    best = None
-    best_score = 0
-    for name, symbol in PAIRS.items():
-        closes = get_closes(symbol)
-        if not closes or len(closes) < 30: continue
-        price = closes[-1]
-        rsi = calc_rsi_correct(closes)
-        ema9 = calc_ema(closes, 9)
-        ema21 = calc_ema(closes, 21)
-        score = 0
-        direction = None
-        # شروط حقيقية و صارمة
-        if rsi < 30 and price > ema21:
-            direction = "CALL"
-            score = 60 + (30 - rsi) * 0.3
-        elif rsi > 70 and price < ema21:
-            direction = "PUT"
-            score = 60 + (rsi - 70) * 0.3
-        elif rsi < 45 and ema9 > ema21 and closes[-1] > closes[-2]:
-            direction = "CALL"
-            score = 56
-        elif rsi > 55 and ema9 < ema21 and closes[-1] < closes[-2]:
-            direction = "PUT"
-            score = 56
-        if direction and score > best_score:
-            best_score = min(score, 65)
-            best = (name, direction, price, rsi, score)
-    return best
-
 def bot_loop():
-    send_msg("✅ البوت الحقيقي V2 اشتغل - RSI مظبوط و نسبة max 65%")
+    print(">>> BOT LOOP STARTED <<<", flush=True)
+    time.sleep(5)
+    send("✅ <b>البوت V3 اشتغل</b>\nعم افحص السوق كل دقيقة...")
+    sent = {}
     while True:
-        now = datetime.now(beirut)
-        if now.second == 30:
-            result = analyze()
-            if result:
-                name, direction, price, rsi, score = result
-                entry_time = (now + timedelta(minutes=1)).replace(second=0, microsecond=0)
-                reversal_time = entry_time + timedelta(minutes=1)
-                entry_str = format_time(entry_time)
-                reversal_str = format_time(reversal_time)
-                now_str = format_time(now)
-                dir_text = "🟢 شراء - CALL" if direction == "CALL" else "🔴 بيع - PUT"
-                msg = f"""🔥 {name} | Pocket Option - تحليل حقيقي V2
-
-🕐 الساعة هلأ: {now_str}
-⏰ وقت الدخول: {entry_str}
-⏳ باقي: 30 ثانية
-
-{dir_text}
-
-🎯 دخول: {price:.5f}
-⏱️ مدة الصفقة: 1 دقيقة
-📊 RSI: {rsi:.1f}
-📈 نسبة النجاح: {score:.0f}% - حسب قوة الاشارة
-
-⚠️ في حال الانعكاس: ادخل ع {reversal_str}"""
-                send_msg(msg)
+        try:
+            print(f"--- CHECK {datetime.now().strftime('%H:%M:%S')} ---", flush=True)
+            for pair in ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD"]:
+                closes = get_price(pair)
+                if not closes: continue
+                price = closes[-1]
+                rsi = calc_rsi(closes)
+                print(f"{pair}: {price:.5f} RSI {rsi:.1f}", flush=True)
+                # شروط أخف مشان يبعت - للتجربة
+                signal = None
+                if rsi < 35: signal = "🟢 CALL ⬆️"
+                elif rsi > 65: signal = "🔴 PUT ⬇️"
+                if signal and sent.get(pair) != signal:
+                    send(f"{signal} <b>{pair}</b>\nالسعر: {price:.5f}\nRSI: {rsi:.1f}\n⏰ دقيقة واحدة")
+                    sent[pair] = signal
+                    print(f"SENT {pair} {signal}", flush=True)
             time.sleep(60)
-        time.sleep(1)
+        except Exception as e:
+            print(f"LOOP ERROR: {e}", flush=True)
+            time.sleep(10)
 
-keep_alive()
-threading.Thread(target=bot_loop).start()
+threading.Thread(target=bot_loop, daemon=True).start()
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
