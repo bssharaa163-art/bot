@@ -15,6 +15,10 @@ def klines(s):
         d = requests.get(f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1m&limit=10", timeout=10).json()
         return [float(x[4]) for x in d]
     except: return []
+def fmt(dt):
+    return f"{dt.hour}:{dt.minute:02d}"
+def fmt_sec(dt):
+    return f"{dt.hour}:{dt.minute:02d}:{dt.second:02d}"
 def get_best(pairs):
     best = None
     best_strength = -1
@@ -41,7 +45,7 @@ def send_signal(pairs):
     send_time = datetime.now() + timedelta(hours=2)
     entry = send_time + timedelta(seconds=30)
     entry = entry.replace(second=0, microsecond=0)
-    msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {best}\nالصفقة: {best_dir}\nسعر الدخول: {best_price}\nوقت الإرسال: {send_time.strftime('%H:%M:%S')}\nوقت الدخول: {entry.strftime('%H:%M:%S')} - مدة دقيقة وحدة\nفي حال الانعكاس: دوبل ⏫\n"
+    msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {best}\nالصفقة: {best_dir}\nالفريم: 1 دقيقة\nسعر الدخول: {best_price}\nوقت الإرسال: {fmt_sec(send_time)}\nوقت الدخول: {fmt(entry)} - مدة دقيقة وحدة\nفي حال الانعكاس: دوبل ⏫\n"
     send(msg)
 def loop():
     send("البوت اشتغل ✅ - كل 5 دقايق صفقة دقيقة وحدة قبل 30 ثانية")
