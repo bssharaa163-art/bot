@@ -9,7 +9,7 @@ CHAT_ID = "6459511609"
 app = Flask(__name__)
 @app.route('/')
 def home():
-    return "Pocket Real Bot is alive!"
+    return "Pocket Real Bot V2"
 
 def keep_alive():
     threading.Thread(target=lambda: app.run(host="0.0.0.0", port=10000)).start()
@@ -27,8 +27,6 @@ PAIRS = {
     "USD/JPY": "USDJPY=X",
     "AUD/USD": "AUDUSD=X",
     "USD/CAD": "USDCAD=X",
-    "EUR/GBP": "EURGBP=X",
-    "EUR/JPY": "EURJPY=X",
 }
 
 def get_closes(symbol):
@@ -43,18 +41,17 @@ def get_closes(symbol):
     except:
         return None
 
-def calc_rsi(prices, period=14):
+def calc_rsi_correct(prices, period=14):
+    # طريقة RSI الصحيحة - Wilder
     if len(prices) < period+1: return 50
-    gains = []
-    losses = []
-    for i in range(1, len(prices)):
-        diff = prices[i] - prices[i-1]
-        if diff >= 0: gains.append(diff)
-        else: losses.append(abs(diff))
-    if len(gains)==0: return 0
-    if len(losses)==0: return 100
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
+    deltas = [prices[i]-prices[i-1] for i in range(1, len(prices))]
+    gains = [d if d>0 else 0 for d in deltas]
+    losses = [-d if d<0 else 0 for d in deltas]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(deltas)):
+        avg_gain = (avg_gain*(period-1) + gains[i]) / period
+        avg_loss = (avg_loss*(period-1) + losses[i]) / period
     if avg_loss == 0: return 100
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
@@ -79,30 +76,31 @@ def analyze():
         closes = get_closes(symbol)
         if not closes or len(closes) < 30: continue
         price = closes[-1]
-        rsi = calc_rsi(closes)
+        rsi = calc_rsi_correct(closes)
         ema9 = calc_ema(closes, 9)
         ema21 = calc_ema(closes, 21)
         score = 0
         direction = None
-        if rsi < 32 and price > ema21:
+        # شروط حقيقية و صارمة
+        if rsi < 30 and price > ema21:
             direction = "CALL"
-            score = 65 + (32 - rsi)
-        elif rsi < 40 and ema9 > ema21 and closes[-1] > closes[-2] and closes[-2] > closes[-3]:
+            score = 60 + (30 - rsi) * 0.3
+        elif rsi > 70 and price < ema21:
+            direction = "PUT"
+            score = 60 + (rsi - 70) * 0.3
+        elif rsi < 45 and ema9 > ema21 and closes[-1] > closes[-2]:
             direction = "CALL"
-            score = 58 + (40 - rsi) * 0.5
-        elif rsi > 68 and price < ema21:
+            score = 56
+        elif rsi > 55 and ema9 < ema21 and closes[-1] < closes[-2]:
             direction = "PUT"
-            score = 65 + (rsi - 68)
-        elif rsi > 60 and ema9 < ema21 and closes[-1] < closes[-2] and closes[-2] < closes[-3]:
-            direction = "PUT"
-            score = 58 + (rsi - 60) * 0.5
+            score = 56
         if direction and score > best_score:
-            best_score = min(score, 72)
+            best_score = min(score, 65)
             best = (name, direction, price, rsi, score)
     return best
 
 def bot_loop():
-    print("بوت بوكت الحقيقي شغال...")
+    send_msg("✅ البوت الحقيقي V2 اشتغل - RSI مظبوط و نسبة max 65%")
     while True:
         now = datetime.now(beirut)
         if now.second == 30:
@@ -115,7 +113,7 @@ def bot_loop():
                 reversal_str = format_time(reversal_time)
                 now_str = format_time(now)
                 dir_text = "🟢 شراء - CALL" if direction == "CALL" else "🔴 بيع - PUT"
-                msg = f"""🔥 {name} | Pocket Option - تحليل حقيقي
+                msg = f"""🔥 {name} | Pocket Option - تحليل حقيقي V2
 
 🕐 الساعة هلأ: {now_str}
 ⏰ وقت الدخول: {entry_str}
@@ -130,8 +128,6 @@ def bot_loop():
 
 ⚠️ في حال الانعكاس: ادخل ع {reversal_str}"""
                 send_msg(msg)
-            else:
-                print(f"ما في فرصة واضحة - {now}")
             time.sleep(60)
         time.sleep(1)
 
