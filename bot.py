@@ -22,7 +22,6 @@ def price(s, disp):
             return p
     except:
         pass
-    # اذا Binance وقف، كفي على آخر سعر + حركة صغيرة، مش 0
     last_prices[disp] = last_prices[disp] * (1 + random.uniform(-0.0005, 0.0005))
     return round(last_prices[disp], 5 if last_prices[disp] < 10 else 2)
 
@@ -54,7 +53,6 @@ def get_best(pairs):
         c = klines(sym)
         if len(c) >= 5:
             change = (c[-1] - c[0]) / c[0] * 100
-            # انعكاس: اذا طالع كتير -> PUT، اذا نازل كتير -> CALL
             if change > 0.03:
                 direction = "PUT 🔴"
                 strength = change
@@ -62,19 +60,14 @@ def get_best(pairs):
                 direction = "CALL 🟢"
                 strength = abs(change)
             else:
-                # حركة صغيرة، خد اتجاه آخر شمعة
                 direction = "CALL 🟢" if c[-1] > c[-2] else "PUT 🔴"
                 strength = abs(change) + 0.01
         else:
-            # ما في بيانات، بدّل بين CALL و PUT مش دايما CALL
             direction = "PUT 🔴" if last_dir["CALL 🟢"] else "CALL 🟢"
             last_dir["CALL 🟢"] = not last_dir["CALL 🟢"]
             strength = random.uniform(0.02, 0.08)
-            change = 0
         candidates.append((strength, disp, p, direction))
-    # رتب و اختار الاقوى، بس بدّل الزوج كل مرة مشان ما يضل نفس الزوج
     candidates.sort(reverse=True)
-    # خد واحد من اقوى 3 بشكل عشوائي مشان التنويع
     top = candidates[:3]
     chosen = random.choice(top)
     return chosen[1], chosen[2], chosen[3]
@@ -82,16 +75,18 @@ def get_best(pairs):
 def send_signal(pairs):
     best, best_price, best_dir = get_best(pairs)
     send_time = datetime.now() + timedelta(hours=2)
-    entry = send_time + timedelta(seconds=30)
-    entry = entry.replace(second=0, microsecond=0)
+    # الدخول = أول دقيقة كاملة بعد 30 ثانية، مش نفس الدقيقة
+    entry_raw = send_time + timedelta(seconds=30)
+    entry = entry_raw.replace(second=0, microsecond=0)
+    if entry_raw.second > 0:
+        entry = entry + timedelta(minutes=1)
     msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {best}\nالصفقة: {best_dir}\nالفريم: 1 دقيقة\nسعر الدخول: {best_price}\nوقت الإرسال: {fmt_sec(send_time)}\nوقت الدخول: {fmt(entry)} - مدة دقيقة وحدة\nفي حال الانعكاس: دوبل ⏫\n"
     send(msg)
 
 def loop():
     send("البوت اشتغل ✅ - تحليل مصلح - بيع و شراء - كل 5 دقايق")
     pairs = [("EURUSDT", "EUR/USD"), ("GBPUSDT", "GBP/USD"), ("AUDUSDT", "AUD/USD"), ("BTCUSDT", "BTC/USD"), ("ETHUSDT", "ETH/USD")]
-    time.sleep(5)
-    send_signal(pairs)
+    # ما بقى يبعت فورا، بينطر للوقت الصح
     while True:
         now = datetime.now() + timedelta(hours=2)
         mins = now.minute % 5
