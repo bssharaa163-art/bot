@@ -124,25 +124,25 @@ def calc_price(disp, last):
 def analyse(disp):
   cl = klines(get_sym(disp))
   if len(cl) < 5:
-    return 0.5, disp, 1.0, "CALL"
+    return 0.5, disp, 1.0, "شراء"
   r = rsi(cl)
   last = cl[-1]
   prev = cl[-2]
   ema = sum(cl[-10:]) / 10
   mom = abs(last - prev) / prev * 100
-  d = "CALL"
+  d = "شراء"
   sc = mom * 10
   if r > 68:
-    d = "PUT"
+    d = "بيع"
     sc = r - 68
   if r < 32:
-    d = "CALL"
+    d = "شراء"
     sc = 32 - r
   if r >= 32 and r <= 68:
     if last > ema:
-      d = "PUT"
+      d = "بيع"
     else:
-      d = "CALL"
+      d = "شراء"
   sc = sc + random.uniform(0, 1.5)
   p = calc_price(disp, last)
   return sc, disp, p, d
