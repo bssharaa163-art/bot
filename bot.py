@@ -5,10 +5,10 @@ import requests
 from flask import Flask
 from datetime import datetime, timedelta
 
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "6459511609")
-TELEGRAM_TOKEN ="9018724396:AAE10-Y5LQgVxlVfiuuqxQDEuqKFuoJIVS8"
+TELEGRAM_CHAT_ID = "6459511609"
+TELEGRAM_TOKEN = "9018724396:AAE10-Y5LQgVxlVfiuuqxQDEuqKFuoJIVS8"
 
-app = Flask(name)
+app = Flask(__name__)
 
 @app.route("/")
 def home():
@@ -104,6 +104,6 @@ def bot_loop():
 
 threading.Thread(target=bot_loop, daemon=True).start()
 
-if name == "main":
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
