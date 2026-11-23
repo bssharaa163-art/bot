@@ -50,7 +50,6 @@ def get_data(symbol):
         data = r.json()
         closes = [float(x[4]) for x in data]
         price = closes[-1]
-        # RSI
         gains=[]; losses=[]
         for i in range(1, 15):
             diff = closes[-15+i] - closes[-16+i]
@@ -62,7 +61,6 @@ def get_data(symbol):
             rsi=100
         else:
             rsi = 100 - (100/(1+avg_gain/avg_loss))
-        # EMA سريع
         ema9 = sum(closes[-9:])/9
         ema21 = sum(closes[-21:])/21
         return price, rsi, ema9, ema21
@@ -96,21 +94,19 @@ def bot_loop():
 
             count = 0
             for binance_symbol, display in PAIRS.items():
-                if count >= 2:  # max 2 صفقات بالدقيقة مشان ما يخربطك
+                if count >= 2:
                     break
                 price, rsi, ema9, ema21 = get_data(binance_symbol)
                 if price is None:
                     continue
                 signal = None
                 reason = ""
-                # شراء سريع: RSI طالع + السعر فوق EMA
                 if rsi >= 45 and rsi <= 70 and ema9 > ema21:
                     signal = "شراء"
                     reason = f"زخم صاعد - RSI {round(rsi,1)} + فوق EMA"
                 elif rsi <= 55 and rsi >= 30 and ema9 < ema21:
                     signal = "بيع"
                     reason = f"زخم هابط - RSI {round(rsi,1)} + تحت EMA"
-                # اشارات قوية كمان
                 elif rsi <= 35:
                     signal = "شراء"
                     reason = f"تشبع بيعي قوي - RSI {round(rsi,1)}"
@@ -121,7 +117,4 @@ def bot_loop():
                 if signal:
                     key = display + entry_time + signal
                     if sent.get(display) != key:
-                        msg = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: {signal}\nسعر الدخول: {price}\nسبب التحليل: {reason}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
-                        send_telegram(msg)
-                        sent[display] = key
-            
+                        msg = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: {signal}\nسعر الدخول: {price}\nسبب التحليل: {reason}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة
