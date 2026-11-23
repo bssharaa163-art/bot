@@ -85,9 +85,9 @@ def fmt(d):
   h = d.hour % 12
   if h == 0:
     h = 12
-  ap = "م"
+  ap = "PM"
   if d.hour < 12:
-    ap = "ص"
+    ap = "AM"
   m = str(d.minute).zfill(2)
   return str(h) + ":" + m + " " + ap
 
@@ -95,9 +95,9 @@ def fmt2(d):
   h = d.hour % 12
   if h == 0:
     h = 12
-  ap = "م"
+  ap = "PM"
   if d.hour < 12:
-    ap = "ص"
+    ap = "AM"
   m = str(d.minute).zfill(2)
   s = str(d.second).zfill(2)
   return str(h) + ":" + m + ":" + s + " " + ap
@@ -248,4 +248,4 @@ def do_signal():
   if wm == 0:
     wm = 5
   entry = base + timedelta(minutes=wm)
-  em = "
+  ms
