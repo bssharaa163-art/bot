@@ -65,12 +65,18 @@ PAIRS = {
     "EURAUD": "EUR/AUD",
     "GBPAUD": "GBP/AUD",
     "AUDCAD": "AUD/CAD",
+    "EURCAD": "EUR/CAD",
+    "GBPCAD": "GBP/CAD",
+    "NZDJPY": "NZD/JPY",
+    "CADJPY": "CAD/JPY",
 }
 
 sent = {}
+last_heartbeat = datetime.now()
 
 def bot_loop():
-    send_telegram("بوت Pocket Option اشتغل\nتحليل حقيقي - سوق عالمي\nرح ابعتلك قبل 30 ثانية")
+    global last_heartbeat
+    send_telegram("بوت Pocket Option اشتغل\nتحليل حقيقي - سوق عالمي\nرح ابعتلك قبل 30 ثانية\nالنظام الجديد: شغال و بيفحص كل دقيقة")
     while True:
         try:
             now_sec = datetime.now().second
@@ -83,20 +89,29 @@ def bot_loop():
             next_minute = datetime.now().replace(second=0, microsecond=0) + timedelta(minutes=1)
             entry_time = next_minute.strftime("%H:%M")
 
+            found = False
             for binance_symbol, display in PAIRS.items():
                 price, rsi = get_rsi(binance_symbol)
                 if price is None:
                     continue
                 signal = None
-                if rsi <= 35:
+                if rsi <= 40:
                     signal = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: شراء\nسعر الدخول: {price}\nسبب التحليل: تشبع بيعي - RSI {round(rsi,1)}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
-                elif rsi >= 65:
+                elif rsi >= 60:
                     signal = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: بيع\nسعر الدخول: {price}\nسبب التحليل: تشبع شرائي - RSI {round(rsi,1)}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
                 if signal:
-                    key = display + entry_time + ("شراء" if "شراء" in signal else "بيع")
+                    found = True
+                    key = display + entry_time + ("شراء" if "الصفقة: شراء" in signal else "بيع")
                     if sent.get(display) != key:
                         send_telegram(signal)
                         sent[display] = key
+            
+            # اذا مرق 15 دقيقة بلا صفقة، بعتلك انو بعدو شغال
+            if datetime.now() - last_heartbeat > timedelta(minutes=15):
+                if not found:
+                    send_telegram(f"البوت بعدو شغال نظامي ✅\nالساعة هلأ: {now_full}\nعم بيفحص 18 زوج كل دقيقة\nما في صفقة قوية هلأ، ناطر اشارة قوية")
+                last_heartbeat = datetime.now()
+
             time.sleep(5)
         except Exception as e:
             print(f"LOOP ERROR: {e}")
