@@ -2,6 +2,7 @@ import os
 import time
 import requests
 import threading
+import random
 from datetime import datetime
 from datetime import timedelta
 from flask import Flask
@@ -32,12 +33,7 @@ PAIRS.append("CAD/JPY")
 PAIRS.append("EUR/NZD")
 PAIRS.append("GBP/NZD")
 PAIRS.append("AUD/NZD")
-PRICE = {}
-for p in PAIRS:
-  PRICE[p] = 1.0
-PRICE["EUR/USD"] = 1.08
-PRICE["GBP/USD"] = 1.27
-PRICE["USD/JPY"] = 155.2
+LAST = []
 def send(m):
   u = "https://api.telegram.org/bot"
   u = u + TOKEN + "/sendMessage"
@@ -45,29 +41,18 @@ def send(m):
     requests.post(u, data={"chat_id": CHAT, "text": m}, timeout=10)
   except:
     pass
-def get_prices():
-  url = "https://open.er-api.com/v6/latest/USD"
-  r = requests.get(url, timeout=8).json()
-  rates = r.get("rates", {})
-  for disp in PAIRS:
-    a = disp.split("/")[0]
-    b = disp.split("/")[1]
-    v = 0
-    if a == "USD":
-      v = rates.get(b, 0)
-    if b == "USD":
-      if rates.get(a):
-        v = 1 / rates.get(a)
-    if a != "USD":
-      if b != "USD":
-        if rates.get(a):
-          if rates.get(b):
-            x = 1 / rates.get(a)
-            y = 1 / rates.get(b)
-            v = x / y
-    if v > 0:
-      PRICE[disp] = v
-  return PRICE
+def klines(sym):
+  u = "https://api.binance.com/api/v3/klines"
+  u = u + "?symbol=" + sym
+  u = u + "&interval=1m&limit=30"
+  try:
+    d = requests.get(u, timeout=5).json()
+    c = []
+    for x in d:
+      c.append(float(x[4]))
+    return c
+  except:
+    return []
 def rsi(closes):
   if len(closes) < 15:
     return 50
@@ -85,18 +70,6 @@ def rsi(closes):
     return 90
   rs = ag / al
   return 100 - (100 / (1 + rs))
-def klines(sym):
-  u = "https://api.binance.com/api/v3/klines"
-  u = u + "?symbol=" + sym
-  u = u + "&interval=1m&limit=20"
-  try:
-    d = requests.get(u, timeout=5).json()
-    c = []
-    for x in d:
-      c.append(float(x[4]))
-    return c
-  except:
-    return []
 def fmt(d):
   h = d.hour % 12
   if h == 0:
@@ -122,102 +95,139 @@ def fmt2(d):
   if d.second < 10:
     s = "0" + s
   return str(h) + ":" + m + ":" + s + " " + ap
-def best_pair():
-  get_prices()
-  best = "EUR/USD"
-  bs = -1
-  bd = "CALL"
-  bp = 1.08
-  for disp in PAIRS:
-    p = PRICE[disp]
-    sym = ""
-    if disp == "EUR/USD":
-      sym = "EURUSDT"
-    if disp == "GBP/USD":
-      sym = "GBPUSDT"
-    if disp == "AUD/USD":
-      sym = "AUDUSDT"
-    if disp == "NZD/USD":
-      sym = "NZDUSDT"
-    r = 50
-    tr = 0
-    if sym != "":
-      cl = klines(sym)
-      if len(cl) > 5:
-        r = rsi(cl)
-        tr = (cl[-1] - cl[0]) / cl[0] * 100
+def get_sym(disp):
+  if disp == "EUR/USD":
+    return "EURUSDT"
+  if disp == "GBP/USD":
+    return "GBPUSDT"
+  if disp == "AUD/USD":
+    return "AUDUSDT"
+  if disp == "NZD/USD":
+    return "NZDUSDT"
+  if disp == "USD/CAD":
+    return "USDCUSDT"
+  if disp == "USD/CHF":
+    return "CHFUSDT"
+  if disp == "USD/JPY":
+    return "JPYUSDT"
+  if disp == "EUR/GBP":
+    return "EURUSDT"
+  if disp == "EUR/JPY":
+    return "EURUSDT"
+  if disp == "GBP/JPY":
+    return "GBPUSDT"
+  if disp == "EUR/AUD":
+    return "EURUSDT"
+  if disp == "GBP/AUD":
+    return "GBPUSDT"
+  if disp == "AUD/JPY":
+    return "AUDUSDT"
+  if disp == "NZD/JPY":
+    return "NZDUSDT"
+  if disp == "EUR/CHF":
+    return "EURUSDT"
+  if disp == "GBP/CHF":
+    return "GBPUSDT"
+  if disp == "AUD/CAD":
+    return "AUDUSDT"
+  if disp == "EUR/CAD":
+    return "EURUSDT"
+  if disp == "CHF/JPY":
+    return "CHFUSDT"
+  if disp == "CAD/JPY":
+    return "USDCUSDT"
+  if disp == "EUR/NZD":
+    return "EURUSDT"
+  if disp == "GBP/NZD":
+    return "GBPUSDT"
+  return "AUDUSDT"
+def analyse(disp):
+  sym = get_sym(disp)
+  cl = klines(sym)
+  if len(cl) < 5:
+    return 1.0, 0.5, "CALL"
+  r = rsi(cl)
+  last = cl[-1]
+  prev = cl[-2]
+  ema = sum(cl[-10:]) / 10
+  mom = (last - prev) / prev * 100
+  d = "CALL"
+  sc = 0
+  if r > 68:
+    d = "PUT"
+    sc = r - 68
+  if r < 32:
     d = "CALL"
-    sc = 0.5
-    if r > 70:
-      d = "PUT"
-      sc = r - 70
-    if r < 30:
-      d = "CALL"
-      sc = 30 - r
-    if r >= 30:
-      if r <= 70:
-        if tr > 0:
-          d = "PUT"
-        else:
-          d = "CALL"
-        sc = abs(tr) * 10 + 0.5
-    if sc > bs:
-      bs = sc
-      best = disp
-      bd = d
-      if p < 10:
-        bp = round(p, 5)
+    sc = 32 - r
+  if r >= 32:
+    if r <= 68:
+      if last > ema:
+        d = "PUT"
       else:
-        bp = round(p, 2)
-  return best, bp, bd
-def do_signal():
-  b, pr, dr = best_pair()
-  now = datetime.now()
-  now = now + timedelta(hours=2)
-  base = now.replace(second=0, microsecond=0)
-  mm = now.minute % 5
-  wm = 5 - mm
-  if wm == 0:
-    wm = 5
-  entry = base + timedelta(minutes=wm)
-  em = "🟢"
-  if dr == "PUT":
-    em = "🔴"
-  msg = "تحليل حقيقي | Pocket Option\n\n"
-  msg = msg + "الزوج: " + b + "\n"
-  msg = msg + "الصفقة: " + dr + " " + em + "\n"
-  msg = msg + "الفريم: 1 دقيقة\n"
-  msg = msg + "سعر الدخول: " + str(pr) + "\n"
-  msg = msg + "وقت الإرسال: " + fmt2(now) + "\n"
-  msg = msg + "وقت الدخول: " + fmt(entry) + "\n"
-  msg = msg + "في حال الانعكاس: دوبل\n"
-  send(msg)
-  print("SENT " + b)
-def loop():
-  send("البوت اشتغل - ازواج عادية فقط - قبل 30 ثانية")
-  while True:
-    now = datetime.now()
-    now = now + timedelta(hours=2)
-    mm = now.minute % 5
-    left = 5 - mm
-    wait = left * 60
-    wait = wait - now.second
-    wait = wait - 30
-    if wait < 0:
-      wait = wait + 300
-    print("WAIT " + str(wait))
-    if wait > 0:
-      time.sleep(wait)
-    try:
-      do_signal()
-    except:
-      pass
-    time.sleep(40)
-@app.route("/")
-def home():
-  return "Bot Live"
-if __name__ == "__main__":
-  t = threading.Thread(target=loop, daemon=True)
-  t.start()
-  port = int(os.environ.get("PORT", 10000))
-  app.run(host="0.0.0.0", port=port)
+        d = "CALL"
+      sc = abs(mom) * 10
+  sc = sc + random.uniform(0, 1.5)
+  price = last
+  if disp == "USD/CAD":
+    if last != 0:
+      price = 1 / last
+  if disp == "USD/CHF":
+    if last != 0:
+      price = 1 / last
+  if disp == "USD/JPY":
+    price = price * 150
+  if disp == "EUR/JPY":
+    price = price * 165
+  if disp == "GBP/JPY":
+    price = price * 190
+  if disp == "AUD/JPY":
+    price = price * 100
+  if disp == "NZD/JPY":
+    price = price * 95
+  if disp == "CHF/JPY":
+    price = price * 175
+  if disp == "CAD/JPY":
+    price = price * 110
+  if disp == "EUR/GBP":
+    price = price * 0.85
+  if disp == "EUR/AUD":
+    price = price * 1.65
+  if disp == "GBP/AUD":
+    price = price * 1.95
+  if disp == "EUR/CHF":
+    price = price * 0.95
+  if disp == "GBP/CHF":
+    price = price * 1.12
+  if disp == "AUD/CAD":
+    price = price * 0.90
+  if disp == "EUR/CAD":
+    price = price * 1.47
+  if disp == "EUR/NZD":
+    price = price * 1.78
+  if disp == "GBP/NZD":
+    price = price * 2.10
+  if disp == "AUD/NZD":
+    price = price * 1.07
+  if price < 10:
+    price = round(price, 5)
+  else:
+    price = round(price, 2)
+  return price, sc, d
+def best_pair():
+  alls = []
+  for disp in PAIRS:
+    pr, sc, d = analyse(disp)
+    alls.append((sc, disp, pr, d))
+  alls.sort(reverse=True)
+  print("TOP3")
+  for x in alls[:3]:
+    print(x[1], round(x[0], 2), x[3])
+  pick = alls[0]
+  if len(LAST) >= 1:
+    if LAST[-1] == pick[1]:
+      if len(alls) > 1:
+        pick = alls[1]
+  if len(LAST) >= 2:
+    if LAST[-1] == pick[1]:
+      if LAST[-2] == pick[1]:
+       
