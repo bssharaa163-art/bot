@@ -6,8 +6,33 @@ app = Flask(__name__)
 TELEGRAM_TOKEN = "9018724396:AAE10-Y5LQgVxlVfiuuqxQDEuqKFuoJIVS8"
 CHAT_ID = "6459511609"
 
-last_prices = {"EUR/USD": 1.0845, "GBP/USD": 1.2730, "AUD/USD": 0.6520, "BTC/USD": 97000, "ETH/USD": 3400}
-last_call = [True]
+# كل الازواج - بدون BTC
+PAIRS = [
+    "EUR/USD", "GBP/USD", "AUD/USD", "NZD/USD",
+    "USD/CAD", "USD/CHF", "USD/JPY",
+    "EUR/GBP", "EUR/JPY", "GBP/JPY", "EUR/AUD",
+    "GBP/AUD", "AUD/JPY", "NZD/JPY", "EUR/CHF",
+    "GBP/CHF", "AUD/CAD", "EUR/CAD", "CHF/JPY",
+    "CAD/JPY", "EUR/NZD", "GBP/NZD", "AUD/NZD",
+    "ETH/USD", "LTC/USD", "XRP/USD",
+    "GOLD", "SILVER"
+]
+
+vol_factor = {
+    "EUR/USD": 0.02, "GBP/USD": 0.025, "AUD/USD": 0.025, "NZD/USD": 0.025,
+    "USD/CAD": 0.02, "USD/CHF": 0.02, "USD/JPY": 0.03,
+    "EUR/GBP": 0.015, "EUR/JPY": 0.03, "GBP/JPY": 0.04, "EUR/AUD": 0.03,
+    "GBP/AUD": 0.035, "AUD/JPY": 0.03, "NZD/JPY": 0.03, "EUR/CHF": 0.02,
+    "GBP/CHF": 0.03, "AUD/CAD": 0.025, "EUR/CAD": 0.03, "CHF/JPY": 0.03,
+    "CAD/JPY": 0.03, "EUR/NZD": 0.03, "GBP/NZD": 0.04, "AUD/NZD": 0.025,
+    "ETH/USD": 0.25, "LTC/USD": 0.30, "XRP/USD": 0.35,
+    "GOLD": 0.15, "SILVER": 0.25
+}
+
+price_history = {p: [] for p in PAIRS}
+last_prices = {p: 1.0 for p in PAIRS}
+last_prices.update({"EUR/USD": 1.0845, "GBP/USD": 1.2730, "AUD/USD": 0.6520, "NZD/USD": 0.6050, "USD/CAD": 1.3650, "USD/CHF": 0.8850, "USD/JPY": 155.20, "ETH/USD": 3400, "LTC/USD": 105, "XRP/USD": 2.35, "GOLD": 2650, "SILVER": 31.5})
+last_winners = []
 
 def send(msg):
     try:
@@ -15,23 +40,47 @@ def send(msg):
     except Exception as e:
         print("send error", e)
 
-def price(sym, disp):
+def get_all_prices():
     try:
-        p = float(requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={sym}", timeout=5).json()["price"])
-        if p > 0:
-            last_prices[disp] = p
-            return p
+        r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8).json()
+        rates = r.get("rates", {})
+        def conv(base, quote):
+            if base == "USD": return rates.get(quote, 0)
+            if quote == "USD": return 1 / rates.get(base, 1) if rates.get(base) else 0
+            usd_base = 1 / rates.get(base, 1) if rates.get(base) else 0
+            usd_quote = 1 / rates.get(quote, 1) if rates.get(quote) else 0
+            if usd_quote == 0: return 0
+            return usd_base / usd_quote
+        mapping = {
+            "EUR/USD": ("EUR", "USD"), "GBP/USD": ("GBP", "USD"), "AUD/USD": ("AUD", "USD"), "NZD/USD": ("NZD", "USD"),
+            "USD/CAD": ("USD", "CAD"), "USD/CHF": ("USD", "CHF"), "USD/JPY": ("USD", "JPY"),
+            "EUR/GBP": ("EUR", "GBP"), "EUR/JPY": ("EUR", "JPY"), "GBP/JPY": ("GBP", "JPY"),
+            "EUR/AUD": ("EUR", "AUD"), "GBP/AUD": ("GBP", "AUD"), "AUD/JPY": ("AUD", "JPY"),
+            "NZD/JPY": ("NZD", "JPY"), "EUR/CHF": ("EUR", "CHF"), "GBP/CHF": ("GBP", "CHF"),
+            "AUD/CAD": ("AUD", "CAD"), "EUR/CAD": ("EUR", "CAD"), "CHF/JPY": ("CHF", "JPY"),
+            "CAD/JPY": ("CAD", "JPY"), "EUR/NZD": ("EUR", "NZD"), "GBP/NZD": ("GBP", "NZD"), "AUD/NZD": ("AUD", "NZD"),
+        }
+        for disp, (b, q) in mapping.items():
+            p = conv(b, q)
+            if p and p > 0:
+                last_prices[disp] = p
+    except Exception as e:
+        print("forex error", e)
+
+    # كريبتو بدون BTC
+    bin_map = {"ETH/USD": "ETHUSDT", "LTC/USD": "LTCUSDT", "XRP/USD": "XRPUSDT", "GOLD": "PAXGUSDT"}
+    for disp, sym in bin_map.items():
+        try:
+            p = float(requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={sym}", timeout=5).json()["price"])
+            if p > 0:
+                last_prices[disp] = p
+        except:
+            pass
+    try:
+        last_prices["SILVER"] = last_prices["GOLD"] * 0.0119 * (1 + random.uniform(-0.001, 0.001))
     except:
         pass
-    last_prices[disp] = last_prices[disp] * (1 + random.uniform(-0.0005, 0.0005))
-    return round(last_prices[disp], 5 if last_prices[disp] < 10 else 2)
-
-def klines(sym):
-    try:
-        d = requests.get(f"https://api.binance.com/api/v3/klines?symbol={sym}&interval=1m&limit=10", timeout=5).json()
-        return [float(x[4]) for x in d]
-    except:
-        return []
+    return last_prices
 
 def fmt(dt):
     h = dt.hour % 12
@@ -45,68 +94,27 @@ def fmt_sec(dt):
     ap = "م" if dt.hour >= 12 else "ص"
     return f"{h}:{dt.minute:02d}:{dt.second:02d} {ap}"
 
-def get_best(pairs):
-    cands = []
-    for sym, disp in pairs:
-        p = price(sym, disp)
-        c = klines(sym)
-        if len(c) >= 5:
-            ch = (c[-1] - c[0]) / c[0] * 100
-            if ch > 0.03: d, s = "PUT 🔴", ch
-            elif ch < -0.03: d, s = "CALL 🟢", abs(ch)
-            else: d, s = ("CALL 🟢" if c[-1] > c[-2] else "PUT 🔴"), abs(ch) + 0.01
+def get_strongest():
+    get_all_prices()
+    scored = []
+    for disp in PAIRS:
+        if disp == "BTC/USD":
+            continue
+        p = last_prices[disp]
+        price_history[disp].append(p)
+        if len(price_history[disp]) > 10:
+            price_history[disp].pop(0)
+        hist = price_history[disp]
+        if len(hist) >= 3:
+            ch = (hist[-1] - hist[0]) / hist[0] * 100 if hist[0] != 0 else 0
+            if ch > 0.02: d = "PUT 🔴"
+            elif ch < -0.02: d = "CALL 🟢"
+            else: d = "CALL 🟢" if hist[-1] > hist[-2] else "PUT 🔴"
+            vf = vol_factor.get(disp, 0.02)
+            score = abs(ch) / vf
+            last_move = abs(hist[-1] - hist[-2]) / hist[-2] * 100 / vf if len(hist) >= 2 and hist[-2] != 0 else 0
+            score = score + last_move + random.uniform(0, 0.3)
         else:
-            d = "PUT 🔴" if last_call[0] else "CALL 🟢"
-            last_call[0] = not last_call[0]
-            s = random.uniform(0.02, 0.08)
-        cands.append((s, disp, p, d))
-    cands.sort(reverse=True)
-    chosen = random.choice(cands[:3])
-    return chosen[1], chosen[2], chosen[3]
-
-def send_signal(pairs):
-    try:
-        best, bp, bd = get_best(pairs)
-        send_time = datetime.now() + timedelta(hours=2)
-        # اهم شي: الدخول هو اول 5 دقايق بعد الارسال
-        base = send_time.replace(second=0, microsecond=0)
-        wait_min = (5 - (send_time.minute % 5)) % 5
-        if wait_min == 0: wait_min = 5
-        entry = base + timedelta(minutes=wait_min)
-        msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {best}\nالصفقة: {bd}\nالفريم: 1 دقيقة\nسعر الدخول: {bp}\nوقت الإرسال: {fmt_sec(send_time)}\nوقت الدخول: {fmt(entry)} - مدة دقيقة وحدة\nفي حال الانعكاس: دوبل ⏫\n"
-        send(msg)
-        print(f"SENT {best} {bd} at {fmt_sec(send_time)} entry {fmt(entry)}", flush=True)
-    except Exception as e:
-        print("signal error", e, flush=True)
-        traceback.print_exc()
-
-def loop():
-    try:
-        send("البوت اشتغل ✅ - كل 5 دقايق - قبل 30 ثانية")
-        print("LOOP STARTED", flush=True)
-        pairs = [("EURUSDT", "EUR/USD"), ("GBPUSDT", "GBP/USD"), ("AUDUSDT", "AUD/USD"), ("BTCUSDT", "BTC/USD"), ("ETHUSDT", "ETH/USD")]
-        while True:
-            now = datetime.now() + timedelta(hours=2)
-            mins = now.minute % 5
-            secs = now.second
-            # ناطر ليوصل لـ X:X:30 - يعني قبل 30 ثانية من الدخول
-            wait = (5 - mins) * 60 - secs - 30
-            if wait < 0: wait = wait + 300
-            print(f"WAIT {wait}s now {fmt_sec(now)}", flush=True)
-            if wait > 0: time.sleep(wait)
-            send_signal(pairs)
-            time.sleep(40)
-    except Exception as e:
-        print("loop crash", e, flush=True)
-        traceback.print_exc()
-        time.sleep(5)
-
-@app.route("/")
-def home():
-    return "Bot is Live ✅"
-
-if __name__ == "__main__":
-    threading.Thread(target=loop, daemon=True).start()
-    port = int(os.environ.get("PORT", 10000))
-    print(f"STARTING ON PORT {port}", flush=True)
-    app.run(host="0.0.0.0", port=port)
+            d = random.choice(["CALL 🟢", "PUT 🔴"])
+            score = random.uniform(0.5, 2.0)
+        scored.append((score, disp, round(p, 5 if p < 10 e
