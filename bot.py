@@ -75,33 +75,4 @@ def get_best(pairs):
 def send_signal(pairs):
     best, best_price, best_dir = get_best(pairs)
     send_time = datetime.now() + timedelta(hours=2)
-    # الدخول = أول دقيقة كاملة بعد 30 ثانية، مش نفس الدقيقة
-    entry_raw = send_time + timedelta(seconds=30)
-    entry = entry_raw.replace(second=0, microsecond=0)
-    if entry_raw.second > 0:
-        entry = entry + timedelta(minutes=1)
-    msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {best}\nالصفقة: {best_dir}\nالفريم: 1 دقيقة\nسعر الدخول: {best_price}\nوقت الإرسال: {fmt_sec(send_time)}\nوقت الدخول: {fmt(entry)} - مدة دقيقة وحدة\nفي حال الانعكاس: دوبل ⏫\n"
-    send(msg)
-
-def loop():
-    send("البوت اشتغل ✅ - تحليل مصلح - بيع و شراء - كل 5 دقايق")
-    pairs = [("EURUSDT", "EUR/USD"), ("GBPUSDT", "GBP/USD"), ("AUDUSDT", "AUD/USD"), ("BTCUSDT", "BTC/USD"), ("ETHUSDT", "ETH/USD")]
-    # ما بقى يبعت فورا، بينطر للوقت الصح
-    while True:
-        now = datetime.now() + timedelta(hours=2)
-        mins = now.minute % 5
-        secs = now.second
-        wait = (5 - mins) * 60 - secs - 30
-        if wait < 0:
-            wait = wait + 300
-        if wait > 0:
-            time.sleep(wait)
-        send_signal(pairs)
-        time.sleep(40)
-
-@app.route("/")
-def home():
-    return "Bot is Live ✅"
-
-threading.Thread(target=loop, daemon=True).start()
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # الدخول = أول وقت على الـ 5 دقايق - 5
