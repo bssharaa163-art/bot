@@ -16,9 +16,15 @@ def klines(s):
         return [float(x[4]) for x in d]
     except: return []
 def fmt(dt):
-    return f"{dt.hour}:{dt.minute:02d}"
+    h = dt.hour % 12
+    if h == 0: h = 12
+    ap = "م" if dt.hour >= 12 else "ص"
+    return f"{h}:{dt.minute:02d} {ap}"
 def fmt_sec(dt):
-    return f"{dt.hour}:{dt.minute:02d}:{dt.second:02d}"
+    h = dt.hour % 12
+    if h == 0: h = 12
+    ap = "م" if dt.hour >= 12 else "ص"
+    return f"{h}:{dt.minute:02d}:{dt.second:02d} {ap}"
 def get_best(pairs):
     best = None
     best_strength = -1
@@ -63,5 +69,4 @@ def loop():
         time.sleep(40)
 @app.route("/")
 def home(): return "Bot is Live ✅"
-threading.Thread(target=loop, daemon=True).start()
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+threading.Thread(target
