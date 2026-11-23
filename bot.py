@@ -1,54 +1,34 @@
-import os
-import time
-import requests
-import threading
+import os, time, requests, threading
 from datetime import datetime, timedelta
 from flask import Flask
-
 app = Flask(__name__)
-
-# حط التوكن تبعك هون اذا ما حاطو بـ Render
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "PUT_YOUR_TOKEN_HERE")
-CHAT_ID = os.environ.get("CHAT_ID", "PUT_YOUR_CHAT_ID_HERE")
-
-PAIRS = [
-    ("BTCUSDT", "BTC/USD"),
-    ("ETHUSDT", "ETH/USD"),
-    ("EURUSDT", "EUR/USD"),
-]
-
-def send_telegram(msg):
+TELEGRAM_TOKEN = "9018724396:AAE10-Y5LQgVxlVfiuuqxQDEuqKFuoJIVS8"
+CHAT_ID = "6459511609"
+def send(msg):
+    try: requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+    except: pass
+def price(s):
+    try: return float(requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={s}", timeout=10).json()["price"])
+    except: return None
+def klines(s):
     try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-        requests.post(url, data={"chat_id": CHAT_ID, "text": msg}, timeout=10)
-    except Exception as e:
-        print(f"Telegram error: {e}")
-
-def get_price(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        r = requests.get(url, timeout=10)
-        return float(r.json()["price"])
-    except:
-        return None
-
-def get_klines(symbol):
-    try:
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1m&limit=10"
-        r = requests.get(url, timeout=10)
-        data = r.json()
-        closes = [float(x[4]) for x in data]
-        return closes
-    except:
-        return []
-
-def analyze():
-    for symbol, display in PAIRS:
-        price = get_price(symbol)
-        closes = get_klines(symbol)
-        if price is None or len(closes) < 5:
-            continue
-
-        # تحليل بسيط: اذا اخر شمعة طالعة -> CALL، اذا نازلة -> PUT
-        if closes[-1] > closes[-2]:
-            signal = "CALL 🟢"
+        d = requests.get(f"https://api.binance.com/api/v3/klines?symbol={s}&interval=1m&limit=5", timeout=10).json()
+        return [float(x[4]) for x in d]
+    except: return []
+def loop():
+    send("البوت اشتغل ✅ - النظام الجديد شغال")
+    pairs = [("BTCUSDT","BTC/USD"),("ETHUSDT","ETH/USD"),("EURUSDT","EUR/USD")]
+    while True:
+        for sym, disp in pairs:
+            p = price(sym); c = klines(sym)
+            if not p or len(c) < 3: continue
+            sig = "CALL 🟢" if c[-1] > c[-2] else "PUT 🔴"
+            rsn = "السعر عم يطلع" if "CALL" in sig else "السعر عم ينزل"
+            now = datetime.now() + timedelta(hours=2)
+            msg = f"تحليل حقيقي | Pocket Option\n\nالزوج: {disp}\nالصفقة: {sig}\nسعر الدخول: {p}\nسبب التحليل: {rsn}\nالساعة: {now.strftime('%H:%M:%S')}\nوقت الدخول: {now.strftime('%H:%M')} - مدة 30 ثانية\n"
+            send(msg)
+            time.sleep(2)
+        time.sleep(60)
+@app.route("/")
+def home(): return "Bot is Live ✅"
+if __name__ ==
