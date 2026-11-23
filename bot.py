@@ -71,9 +71,9 @@ def fmt(d):
   h = d.hour % 12
   if h == 0:
     h = 12
-  ap = "PM"
+  ap = "م"
   if d.hour < 12:
-    ap = "AM"
+    ap = "ص"
   m = str(d.minute).zfill(2)
   return str(h) + ":" + m + " " + ap
 
@@ -81,9 +81,9 @@ def fmt2(d):
   h = d.hour % 12
   if h == 0:
     h = 12
-  ap = "PM"
+  ap = "م"
   if d.hour < 12:
-    ap = "AM"
+    ap = "ص"
   m = str(d.minute).zfill(2)
   s = str(d.second).zfill(2)
   return str(h) + ":" + m + ":" + s + " " + ap
@@ -173,19 +173,19 @@ def do_signal():
   if wm == 0:
     wm = 5
   entry = base + timedelta(minutes=wm)
-  msg = "Pocket Option - Real Analysis\n\n"
-  msg = msg + "Pair: " + b + "\n"
-  msg = msg + "Trade: " + dr + "\n"
-  msg = msg + "Timeframe: 1 min\n"
-  msg = msg + "Entry Price: " + str(pr) + "\n"
-  msg = msg + "Sent At: " + fmt2(now) + "\n"
-  msg = msg + "Entry At: " + fmt(entry) + "\n"
-  msg = msg + "If reverse: Double\n"
+  msg = "تحليل حقيقي | Pocket Option\n\n"
+  msg = msg + "الزوج: " + b + "\n"
+  msg = msg + "الصفقة: " + dr + "\n"
+  msg = msg + "الفريم: 1 دقيقة\n"
+  msg = msg + "سعر الدخول: " + str(pr) + "\n"
+  msg = msg + "وقت الارسال: " + fmt2(now) + "\n"
+  msg = msg + "وقت الدخول: " + fmt(entry) + "\n"
+  msg = msg + "في حال الانعكاس: دوبل\n"
   send(msg)
   print("SENT " + b, flush=True)
 
 def loop():
-  send("Bot Started - Real Analysis")
+  send("البوت اشتغل - تحليل حقيقي")
   print("LOOP STARTED", flush=True)
   while True:
     now = datetime.now()
