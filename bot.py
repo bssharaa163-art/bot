@@ -14,69 +14,74 @@ app = Flask(__name__)
 def home():
     return "Bot Live!"
 
-def send_telegram(text):
+def send_telegram(text, chat_id=None):
+    if chat_id is None:
+        chat_id = TELEGRAM_CHAT_ID
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
-    except Exception as e:
-        print(f"ERROR: {e}")
+        requests.post(url, json={"chat_id": chat_id, "text": text}, timeout=10)
+    except:
+        pass
 
-def get_rsi(symbol):
+last_update_id = 0
+def listen_loop():
+    global last_update_id
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+            r = requests.get(url, params={"offset": last_update_id + 1, "timeout": 20}, timeout=30)
+            data = r.json()
+            if data.get("ok"):
+                for upd in data.get("result", []):
+                    last_update_id = upd["update_id"]
+                    msg = upd.get("message", {})
+                    text = msg.get("text", "").lower().strip()
+                    chat_id = str(msg.get("chat", {}).get("id", ""))
+                    if text in ["/start", "ستارت", "start", "hi", "هاي", "مرحبا"]:
+                        send_telegram("اهلا فيك ✅\n\nالبوت السريع شغال\nتحليل حقيقي - سوق عالمي\n\nرح ابعتلك 4-6 صفقات بالساعة\nقبل 30 ثانية من الدخول", chat_id)
+        except:
+            pass
+        time.sleep(2)
+
+def get_data(symbol):
     try:
         url = "https://api.binance.com/api/v3/klines"
-        params = {"symbol": symbol, "interval": "1m", "limit": 50}
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params={"symbol": symbol, "interval": "1m", "limit": 50}, timeout=10)
         data = r.json()
         closes = [float(x[4]) for x in data]
         price = closes[-1]
-        gains = []
-        losses = []
+        # RSI
+        gains=[]; losses=[]
         for i in range(1, 15):
-            diff = closes[-15 + i] - closes[-16 + i]
-            if diff >= 0:
-                gains.append(diff)
-                losses.append(0)
-            else:
-                gains.append(0)
-                losses.append(-diff)
-        avg_gain = sum(gains) / 14
-        avg_loss = sum(losses) / 14
-        if avg_loss == 0:
-            rsi = 100
+            diff = closes[-15+i] - closes[-16+i]
+            gains.append(diff if diff>=0 else 0)
+            losses.append(-diff if diff<0 else 0)
+        avg_gain = sum(gains)/14
+        avg_loss = sum(losses)/14
+        if avg_loss==0:
+            rsi=100
         else:
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-        return price, rsi
+            rsi = 100 - (100/(1+avg_gain/avg_loss))
+        # EMA سريع
+        ema9 = sum(closes[-9:])/9
+        ema21 = sum(closes[-21:])/21
+        return price, rsi, ema9, ema21
     except:
-        return None, None
+        return None, None, None, None
 
 PAIRS = {
-    "EURUSD": "EUR/USD",
-    "GBPUSD": "GBP/USD",
-    "USDJPY": "USD/JPY",
-    "AUDUSD": "AUD/USD",
-    "USDCAD": "USD/CAD",
-    "EURGBP": "EUR/GBP",
-    "EURJPY": "EUR/JPY",
-    "GBPJPY": "GBP/JPY",
-    "AUDJPY": "AUD/JPY",
-    "NZDUSD": "NZD/USD",
-    "USDCHF": "USD/CHF",
-    "EURAUD": "EUR/AUD",
-    "GBPAUD": "GBP/AUD",
-    "AUDCAD": "AUD/CAD",
-    "EURCAD": "EUR/CAD",
-    "GBPCAD": "GBP/CAD",
-    "NZDJPY": "NZD/JPY",
-    "CADJPY": "CAD/JPY",
+    "EURUSD": "EUR/USD", "GBPUSD": "GBP/USD", "USDJPY": "USD/JPY",
+    "AUDUSD": "AUD/USD", "USDCAD": "USD/CAD", "EURGBP": "EUR/GBP",
+    "EURJPY": "EUR/JPY", "GBPJPY": "GBP/JPY", "AUDJPY": "AUD/JPY",
+    "NZDUSD": "NZD/USD", "USDCHF": "USD/CHF", "EURAUD": "EUR/AUD",
+    "GBPAUD": "GBP/AUD", "AUDCAD": "AUD/CAD", "EURCAD": "EUR/CAD",
+    "GBPCAD": "GBP/CAD", "NZDJPY": "NZD/JPY", "CADJPY": "CAD/JPY",
 }
 
 sent = {}
-last_heartbeat = datetime.now()
 
 def bot_loop():
-    global last_heartbeat
-    send_telegram("بوت Pocket Option اشتغل\nتحليل حقيقي - سوق عالمي\nرح ابعتلك قبل 30 ثانية\nالنظام الجديد: شغال و بيفحص كل دقيقة")
+    send_telegram("بوت Pocket Option اشتغل\nالوضع السريع ON 🔥\nتحليل حقيقي - سوق عالمي\nرح ابعتلك قبل 30 ثانية\n4-6 صفقات بالساعة")
     while True:
         try:
             now_sec = datetime.now().second
@@ -89,36 +94,34 @@ def bot_loop():
             next_minute = datetime.now().replace(second=0, microsecond=0) + timedelta(minutes=1)
             entry_time = next_minute.strftime("%H:%M")
 
-            found = False
+            count = 0
             for binance_symbol, display in PAIRS.items():
-                price, rsi = get_rsi(binance_symbol)
+                if count >= 2:  # max 2 صفقات بالدقيقة مشان ما يخربطك
+                    break
+                price, rsi, ema9, ema21 = get_data(binance_symbol)
                 if price is None:
                     continue
                 signal = None
-                if rsi <= 40:
-                    signal = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: شراء\nسعر الدخول: {price}\nسبب التحليل: تشبع بيعي - RSI {round(rsi,1)}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
-                elif rsi >= 60:
-                    signal = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: بيع\nسعر الدخول: {price}\nسبب التحليل: تشبع شرائي - RSI {round(rsi,1)}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
+                reason = ""
+                # شراء سريع: RSI طالع + السعر فوق EMA
+                if rsi >= 45 and rsi <= 70 and ema9 > ema21:
+                    signal = "شراء"
+                    reason = f"زخم صاعد - RSI {round(rsi,1)} + فوق EMA"
+                elif rsi <= 55 and rsi >= 30 and ema9 < ema21:
+                    signal = "بيع"
+                    reason = f"زخم هابط - RSI {round(rsi,1)} + تحت EMA"
+                # اشارات قوية كمان
+                elif rsi <= 35:
+                    signal = "شراء"
+                    reason = f"تشبع بيعي قوي - RSI {round(rsi,1)}"
+                elif rsi >= 65:
+                    signal = "بيع"
+                    reason = f"تشبع شرائي قوي - RSI {round(rsi,1)}"
+
                 if signal:
-                    found = True
-                    key = display + entry_time + ("شراء" if "الصفقة: شراء" in signal else "بيع")
+                    key = display + entry_time + signal
                     if sent.get(display) != key:
-                        send_telegram(signal)
+                        msg = f"━━━━━━━━━━━━━━━\nتحليل حقيقي | Pocket Option\n━━━━━━━━━━━━━━━\n\nالزوج: {display}\nالصفقة: {signal}\nسعر الدخول: {price}\nسبب التحليل: {reason}\n\nالساعة هلأ: {now_full}\nوقت الدخول: {entry_time} - بعد 30 ثانية\n\nمدة الفريم: 1 دقيقة\nمدة الصفقة: 1 دقيقة\n━━━━━━━━━━━━━━━\nفي حال الانعكاس: دوبل\n━━━━━━━━━━━━━━━"
+                        send_telegram(msg)
                         sent[display] = key
             
-            # اذا مرق 15 دقيقة بلا صفقة، بعتلك انو بعدو شغال
-            if datetime.now() - last_heartbeat > timedelta(minutes=15):
-                if not found:
-                    send_telegram(f"البوت بعدو شغال نظامي ✅\nالساعة هلأ: {now_full}\nعم بيفحص 18 زوج كل دقيقة\nما في صفقة قوية هلأ، ناطر اشارة قوية")
-                last_heartbeat = datetime.now()
-
-            time.sleep(5)
-        except Exception as e:
-            print(f"LOOP ERROR: {e}")
-            time.sleep(10)
-
-threading.Thread(target=bot_loop, daemon=True).start()
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
