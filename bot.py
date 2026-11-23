@@ -31,4 +31,5 @@ def loop():
         time.sleep(60)
 @app.route("/")
 def home(): return "Bot is Live ✅"
-if __name__ ==
+threading.Thread(target=loop, daemon=True).start()
+app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
